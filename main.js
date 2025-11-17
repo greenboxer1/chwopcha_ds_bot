@@ -557,7 +557,7 @@ const autoKickSpam = async (msg) => {
 client.once('ready', async () => {
     console.log('Bot is ready!');
     await registerCommands(client); //регает слеш команды при запуске
-    console.log('test deploy 2')
+    console.log('test deploy 3')
 });
 
 client.on('messageCreate', async (msg) => {
