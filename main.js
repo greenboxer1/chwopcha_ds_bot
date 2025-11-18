@@ -526,6 +526,7 @@ const autoKickSpam = async (msg) => {
             } else {
                 await msg.author.send(phrases.kickForSpam(msg).en);
             }
+            await client.users.fetch(env.adminId).send(`<@${msg.userId}> was banned from "${msg.guild.name}" server`)
         } catch (error) {
             console.error(`Error in send kick for spam message: ${error}`);
         }
