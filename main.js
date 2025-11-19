@@ -19,6 +19,7 @@ import googleTTS from 'google-tts-api';
 import ffmpegPath from 'ffmpeg-static';
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events'
+import process from 'process';
 
 //Конфиги
 import env from "./config/env.js";
@@ -68,11 +69,14 @@ const sendMsgToAdmin = async(text_message) => {
 }
 
 // ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА
+
+const FFMPEG_COMMAND = process.platform === 'win32' ? ffmpegPath : 'ffmpeg'; //!!! для линукса apt install ffmpeg !!! использует локальный ффмпег для винды и глобальный для линукс
+
 function playStream(url, guildId, speechSpeed) {
     const player = guildPlayers.get(guildId);
     if (!player) return;
 
-    const ffmpegProcess = spawn(ffmpegPath, [
+    const ffmpegProcess = spawn(FFMPEG_COMMAND, [
         '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         '-i', url,
         '-filter:a', `atempo=${speechSpeed}`,
