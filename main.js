@@ -91,16 +91,18 @@ function playStream(url, guildId, speechSpeed) {
         inlineVolume: true
     });
 
-    ffmpegProcess.stderr.on('data', (data) => {
-        // Показываем все, что FFmpeg говорит в stderr
-        console.error(`FFMPEG ERROR [${guildId}]: ${data.toString()}`); 
-    });
 
-    ffmpegProcess.on('close', (code) => {
-        if (code !== 0) {
-            console.error(`FFMPEG PROCESS CLOSED WITH ERROR CODE ${code} on guild ${guildId}`);
-        }
-    });
+    //Логирование ошибок ffmpeg разкомментируй если опять хуйня начнется
+    // ffmpegProcess.stderr.on('data', (data) => {
+    //     // Показываем все, что FFmpeg говорит в stderr
+    //     console.error(`FFMPEG ERROR [${guildId}]: ${data.toString()}`); 
+    // });
+
+    // ffmpegProcess.on('close', (code) => {
+    //     if (code !== 0) {
+    //         console.error(`FFMPEG PROCESS CLOSED WITH ERROR CODE ${code} on guild ${guildId}`);
+    //     }
+    // });
 
     player.play(resource);
 }
