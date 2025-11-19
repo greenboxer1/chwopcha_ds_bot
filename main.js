@@ -755,7 +755,7 @@ client.once('ready', async () => {
     });
   
     //описание
-    await client.application.edit({ description: 'Automatic spam removal and automatic thread creation in creative channels. Autoban spam hack, text-to-voice in voice channels, EBMED messages, and button-based role assignment.' });
+    await client.application.edit({ description: 'Automatic spam removal and automatic thread creation in creative channels. Autoban spam hack, text-to-voice in voice channels, embed messages, and button-based role assignment.' });
 });
 
 client.on('messageCreate', async (msg) => {
