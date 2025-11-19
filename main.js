@@ -747,6 +747,15 @@ client.once('ready', async () => {
     console.log('Bot is ready!');
     await registerCommands(client); //регает слеш команды при запуске
     await sendMsgToAdmin('Bot started')
+
+    //статус 
+    client.user.setPresence({
+        activities: [{ name: 'chwop-chwop', type: 4 }], // Type 4 for custom
+        status: 'online'
+    });
+  
+    //описание
+    await client.application.edit({ description: 'Automatic spam removal and automatic thread creation in creative channels. Autoban spam hack, text-to-voice in voice channels, EBMED messages, and button-based role assignment.' });
 });
 
 client.on('messageCreate', async (msg) => {
