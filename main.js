@@ -68,17 +68,13 @@ const sendMsgToAdmin = async(text_message) => {
 }
 
 // ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА
-const SPEECH_SPEED = '1.3'; 
-const guildPlayers = new Map();
-const guildQueues = new Map(); 
-
-function playStream(url, guildId) {
+function playStream(url, guildId, speechSpeed) {
     const player = guildPlayers.get(guildId);
     if (!player) return;
 
     const ffmpegProcess = spawn(ffmpegPath, [
         '-i', url,
-        '-filter:a', `atempo=${SPEECH_SPEED}`,
+        '-filter:a', `atempo=${speechSpeed}`,
         '-f', 'opus',
         '-ar', '48000',
         '-ac', '1',
@@ -97,13 +93,24 @@ function playStream(url, guildId) {
     player.play(resource);
 }
 
-function playNextInQueue(guildId) {
-    const queue = guildQueues.get(guildId);
-    if (!queue || queue.length === 0) return;
+function playNextInQueue(guildId) { 
+    const queueData = guildQueues.get(guildId);
+    
+    if (!queueData || queueData.queue.length === 0) return;
+    
+    const nextUrl = queueData.queue.shift();
+    const speechSpeed = queueData.speechSpeed;
 
-    const nextUrl = queue.shift();
-    playStream(nextUrl, guildId);
+    playStream(nextUrl, guildId, speechSpeed); 
 }
+
+const SPEECH_SPEEDS = {
+    'ru': '1.5',
+    'en': '1.4'  
+}; 
+
+const guildPlayers = new Map(); 
+const guildQueues = new Map();
 
 async function executeVoiceTTS(message) {
     const guildId = message.guild.id;
@@ -111,21 +118,22 @@ async function executeVoiceTTS(message) {
     // 1. Проверки
     if (message.author.bot || !message.content) return;
     if (message.channel.type !== ChannelType.GuildVoice) return;
+    
+    // 2. ПОЛУЧАЕМ ЯЗЫК СЕРВЕРА И СКОРОСТЬ
+    const lang = getServerLang(message); 
+    const speechSpeed = SPEECH_SPEEDS[lang] || SPEECH_SPEEDS['ru']; 
 
     try {
-        // --- 2. Инициализация плеера для этого сервера ---
+        // 3. Инициализация плеера для этого сервера
         let player = guildPlayers.get(guildId);
-        let queue = guildQueues.get(guildId);
-
-        // Если плеер не существует для этого сервера, создаем его
+        // Если плеер не существует, создаем его и настраиваем слушатели
         if (!player) {
             player = createAudioPlayer({
                 behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
             });
-            guildPlayers.set(guildId, player); // Сохраняем плеер в карте
-            guildQueues.set(guildId, []);      // Создаем пустую очередь
+            guildPlayers.set(guildId, player); 
 
-            // Настраиваем слушатель (Idle) для НОВОГО плеера (это будет работать только для него)
+            // Настраиваем слушатель (Idle) для НОВОГО плеера
             player.on(AudioPlayerStatus.Idle, () => {
                 playNextInQueue(guildId);
             });
@@ -134,32 +142,38 @@ async function executeVoiceTTS(message) {
             });
         }
         
-        // Получаем свежую очередь
-        queue = guildQueues.get(guildId);
+        // 4. Очистка и подготовка
+        // Очищаем старую очередь и останавливаем плеер (если его перебили)
+        guildQueues.set(guildId, {
+            queue: [], // Очищаем очередь
+            lang: lang, 
+            speechSpeed: speechSpeed
+        });
+        player.stop();    
+        
+        // Получаем объект очереди
+        let queueData = guildQueues.get(guildId);
 
-        // 3. Очистка и подготовка: если бот читает, его прерывают новым сообщением
-        queue.length = 0; // Очищаем старую очередь
-        player.stop();    // Останавливаем текущее воспроизведение
-
-        // 4. Подключение к каналу (или обновление соединения)
+        // 5. Подключение к каналу
         const connection = joinVoiceChannel({
             channelId: message.channel.id,
             guildId: guildId,
             adapterCreator: message.guild.voiceAdapterCreator,
             selfDeaf: true,
         });
-        connection.subscribe(player); // Подписываем ПЛЕЕР ЭТОГО СЕРВЕРА
+        connection.subscribe(player); 
 
-        // 5. Разбиение длинного текста и заполнение очереди
+        // 6. Разбиение длинного текста и заполнение очереди
         const results = googleTTS.getAllAudioUrls(message.content, {
-            lang: 'ru',
+            lang: lang, 
             slow: false,
             host: 'https://translate.google.com',
         });
 
-        results.forEach(item => queue.push(item.url));
+        // Заполняем массив URL в объекте очереди
+        queueData.queue.push(...results.map(item => item.url));
 
-        // 6. Ставим реакцию и запускаем чтение
+        // 7. Ставим реакцию и запускаем чтение
         await message.react('❌');
         playNextInQueue(guildId);
 
@@ -168,16 +182,26 @@ async function executeVoiceTTS(message) {
     }
 }
 
+// Обработка нажатия на крестик (кнопка "Стоп")
 client.on('messageReactionAdd', async (reaction, user) => {
     if (user.bot || reaction.emoji.name !== '❌') return;
 
     const guildId = reaction.message.guild.id;
     const player = guildPlayers.get(guildId);
-    const queue = guildQueues.get(guildId);
+    const queueData = guildQueues.get(guildId);
 
-    if (player && queue) {
-        queue.length = 0;
-        player.stop();
+    // Останавливаем, только если плеер и очередь существуют для этого сервера
+    if (player && queueData) {
+        queueData.queue.length = 0; // Очищаем очередь
+        player.stop();    // Останавливаем текущее воспроизведение
+        
+        // Опционально: удаляем реакцию, чтобы кнопка не выглядела нажатой
+        try {
+            await reaction.users.remove(user.id);
+        } catch (e) {
+            console.error('Не удалось удалить реакцию:', e);
+        }
+        
         console.log(`Пользователь ${user.username} остановил чтение на сервере ${reaction.message.guild.name}.`);
     }
 });
@@ -633,7 +657,7 @@ const twitterAutoChange = async (msg) => {
 // Создание фильтров из конфигов для фильтрации каналов
 const filters = channelConfigs.map(config => new CreativeChannelsFilter(config));
 
-//Кик тех кого взломали и начался спам в чат (3 сообщения с промеждутком меньше 10 сек)
+//Кик тех кого взломали и начался спам в чат (6 сообщения с промеждутком меньше 60 сек)
 const userActivity = new Map();
 const autoKickSpam = async (msg) => {
 

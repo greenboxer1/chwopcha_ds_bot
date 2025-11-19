@@ -32,7 +32,7 @@ const channelConfigs = [
     {
         serverName: 'Library тестовый сервер',
         guildId: '1016342174058696824',
-        lang: 'ru',
+        lang: 'en',
         isTwitterAutoChange: true,
         twitterAutoChangeBlackList: ['1016361436764700802'],
         autoBanSpam: true,
