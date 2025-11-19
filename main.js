@@ -1,4 +1,24 @@
-import { REST, Routes, ApplicationCommandOptionType, Client, IntentsBitField, managerToFetchingStrategyOptions, Guild, User, EmbedBuilder, time, SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
+//Библиотеки
+import { 
+    REST, Routes, ApplicationCommandOptionType, Client, IntentsBitField, 
+    managerToFetchingStrategyOptions, Guild, User, EmbedBuilder, time, 
+    SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, 
+    ButtonStyle, PermissionsBitField, ModalBuilder, TextInputBuilder, 
+    TextInputStyle, ChannelType
+} from 'discord.js';
+
+import { 
+    joinVoiceChannel, 
+    createAudioPlayer, 
+    createAudioResource, 
+    StreamType, 
+    NoSubscriberBehavior 
+} from '@discordjs/voice';
+import googleTTS from 'google-tts-api';
+import ffmpegPath from 'ffmpeg-static';
+import { spawn } from 'child_process';
+
+//Мои штуки
 import env from "./config/env.js";
 import channelConfigs from "./config/guilds_settings.js";
 import * as phrases from "./config/phrases.js";
@@ -32,6 +52,77 @@ const getServerLang = (msg) => {
 const debug = (consoleMsg) => {
     console.log(`[${dateNow()}] ${consoleMsg}`)
 }
+
+// ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА
+
+// --- КОНФИГУРАЦИЯ ---
+// Коэффициент ускорения: 
+// 1.0 = нормально, 1.3 = быстро (как Edge), 1.5 = очень быстро
+const SPEECH_SPEED = '10'; 
+
+// --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
+const player = createAudioPlayer({
+    behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
+});
+
+player.on('error', error => {
+    console.error('Audio Player Error:', error.message);
+});
+
+// --- ГЛАВНАЯ ФУНКЦИЯ ---
+async function executeVoiceTTS(message) {
+    // 1. Проверки
+    if (message.author.bot || !message.content) return;
+    if (message.channel.type !== ChannelType.GuildVoice) return;
+
+    try {
+        // 2. Подключение к каналу
+        const connection = joinVoiceChannel({
+            channelId: message.channel.id,
+            guildId: message.guild.id,
+            adapterCreator: message.guild.voiceAdapterCreator,
+            selfDeaf: true,
+        });
+        connection.subscribe(player);
+
+        // 3. Получаем прямую ссылку на MP3 от Google
+        // (Это только ссылка, сам файл мы еще не качаем)
+        const url = googleTTS.getAudioUrl(message.content, {
+            lang: 'ru',
+            slow: false,
+            host: 'https://translate.google.com',
+        });
+
+        // 4. Запускаем процесс FFmpeg для ускорения аудио
+        // Мы берем поток из интернета -> ускоряем -> отдаем в Discord
+        const ffmpegProcess = spawn(ffmpegPath, [
+            '-i', url,                // Вход: URL от Google
+            '-filter:a', `atempo=${SPEECH_SPEED}`, // Фильтр: ускорение темпа без изменения высоты голоса
+            '-f', 'opus',             // Выход: формат Opus (родной для Discord)
+            '-ar', '48000',           // Частота: 48кГц (стандарт Discord)
+            '-ac', '1',               // Каналы: Моно (экономит трафик)
+            'pipe:1'                  // Вывод: в стандартный поток (stdout)
+        ]);
+
+        // 5. Создаем ресурс из вывода FFmpeg
+        const resource = createAudioResource(ffmpegProcess.stdout, {
+            inputType: StreamType.Arbitrary,
+            inlineVolume: true
+        });
+
+        // Если возникнет ошибка внутри FFmpeg, выведем её
+        ffmpegProcess.stderr.on('data', (data) => {
+            // Раскомментируй строку ниже только для глубокой отладки, иначе будет спам
+            // console.log(`FFmpeg Log: ${data}`); 
+        });
+
+        player.play(resource);
+
+    } catch (error) {
+        console.error("TTS Error:", error.message);
+    }
+}
+
 
 //   
 //  СЛЕШ КОМАНДЫ КНОПКИ И ПРОЧАЯ ХУЕТА СЛЕШ КОМАНДЫ КНОПКИ И ПРОЧАЯ ХУЕТА
@@ -568,6 +659,7 @@ client.on('messageCreate', async (msg) => {
     }
     twitterAutoChange(msg)
     autoKickSpam(msg)
+    executeVoiceTTS(msg)
 });
 
 client.login(env.token);
