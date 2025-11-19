@@ -4,7 +4,7 @@ import {
     managerToFetchingStrategyOptions, Guild, User, EmbedBuilder, time, 
     SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, 
     ButtonStyle, PermissionsBitField, ModalBuilder, TextInputBuilder, 
-    TextInputStyle, ChannelType
+    TextInputStyle, ChannelType, Partials
 } from 'discord.js';
 
 import { 
@@ -12,13 +12,15 @@ import {
     createAudioPlayer, 
     createAudioResource, 
     StreamType, 
-    NoSubscriberBehavior 
+    NoSubscriberBehavior,
+    AudioPlayerStatus
 } from '@discordjs/voice';
 import googleTTS from 'google-tts-api';
 import ffmpegPath from 'ffmpeg-static';
 import { spawn } from 'child_process';
+import { EventEmitter } from 'events'
 
-//Мои штуки
+//Конфиги
 import env from "./config/env.js";
 import channelConfigs from "./config/guilds_settings.js";
 import * as phrases from "./config/phrases.js";
@@ -31,10 +33,13 @@ const client = new Client({
         IntentsBitField.Flags.GuildMessages,
         IntentsBitField.Flags.MessageContent,
         IntentsBitField.Flags.GuildVoiceStates,
-        IntentsBitField.Flags.GuildPresences
-    ]
+        IntentsBitField.Flags.GuildPresences,
+        IntentsBitField.Flags.GuildMessageReactions
+    ],
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 })
 
+//Мои вспомогательные функции
 const dateNow = () => {
     const now = new Date();
     const padZero = (num) => num < 10 ? `0${num}` : num;
@@ -53,75 +58,129 @@ const debug = (consoleMsg) => {
     console.log(`[${dateNow()}] ${consoleMsg}`)
 }
 
+const sendMsgToAdmin = async(text_message) => {
+    try {
+        const adminUser = await client.users.fetch(env.adminId);
+        await adminUser.send(text_message);
+    } catch (error) {
+        console.error('Error when send msg to admin', error);
+    }
+}
+
 // ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА
+const SPEECH_SPEED = '1.3'; 
+const guildPlayers = new Map();
+const guildQueues = new Map(); 
 
-// --- КОНФИГУРАЦИЯ ---
-// Коэффициент ускорения: 
-// 1.0 = нормально, 1.3 = быстро (как Edge), 1.5 = очень быстро
-const SPEECH_SPEED = '10'; 
+function playStream(url, guildId) {
+    const player = guildPlayers.get(guildId);
+    if (!player) return;
 
-// --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
-const player = createAudioPlayer({
-    behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
-});
+    const ffmpegProcess = spawn(ffmpegPath, [
+        '-i', url,
+        '-filter:a', `atempo=${SPEECH_SPEED}`,
+        '-f', 'opus',
+        '-ar', '48000',
+        '-ac', '1',
+        'pipe:1'
+    ]);
 
-player.on('error', error => {
-    console.error('Audio Player Error:', error.message);
-});
+    const resource = createAudioResource(ffmpegProcess.stdout, {
+        inputType: StreamType.Arbitrary,
+        inlineVolume: true
+    });
 
-// --- ГЛАВНАЯ ФУНКЦИЯ ---
+    ffmpegProcess.stderr.on('data', (data) => {
+        // Логирование ошибок FFmpeg (если нужно)
+    });
+
+    player.play(resource);
+}
+
+function playNextInQueue(guildId) {
+    const queue = guildQueues.get(guildId);
+    if (!queue || queue.length === 0) return;
+
+    const nextUrl = queue.shift();
+    playStream(nextUrl, guildId);
+}
+
 async function executeVoiceTTS(message) {
+    const guildId = message.guild.id;
+
     // 1. Проверки
     if (message.author.bot || !message.content) return;
     if (message.channel.type !== ChannelType.GuildVoice) return;
 
     try {
-        // 2. Подключение к каналу
+        // --- 2. Инициализация плеера для этого сервера ---
+        let player = guildPlayers.get(guildId);
+        let queue = guildQueues.get(guildId);
+
+        // Если плеер не существует для этого сервера, создаем его
+        if (!player) {
+            player = createAudioPlayer({
+                behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
+            });
+            guildPlayers.set(guildId, player); // Сохраняем плеер в карте
+            guildQueues.set(guildId, []);      // Создаем пустую очередь
+
+            // Настраиваем слушатель (Idle) для НОВОГО плеера (это будет работать только для него)
+            player.on(AudioPlayerStatus.Idle, () => {
+                playNextInQueue(guildId);
+            });
+            player.on('error', error => {
+                console.error(`Audio Player Error [${guildId}]:`, error.message);
+            });
+        }
+        
+        // Получаем свежую очередь
+        queue = guildQueues.get(guildId);
+
+        // 3. Очистка и подготовка: если бот читает, его прерывают новым сообщением
+        queue.length = 0; // Очищаем старую очередь
+        player.stop();    // Останавливаем текущее воспроизведение
+
+        // 4. Подключение к каналу (или обновление соединения)
         const connection = joinVoiceChannel({
             channelId: message.channel.id,
-            guildId: message.guild.id,
+            guildId: guildId,
             adapterCreator: message.guild.voiceAdapterCreator,
             selfDeaf: true,
         });
-        connection.subscribe(player);
+        connection.subscribe(player); // Подписываем ПЛЕЕР ЭТОГО СЕРВЕРА
 
-        // 3. Получаем прямую ссылку на MP3 от Google
-        // (Это только ссылка, сам файл мы еще не качаем)
-        const url = googleTTS.getAudioUrl(message.content, {
+        // 5. Разбиение длинного текста и заполнение очереди
+        const results = googleTTS.getAllAudioUrls(message.content, {
             lang: 'ru',
             slow: false,
             host: 'https://translate.google.com',
         });
 
-        // 4. Запускаем процесс FFmpeg для ускорения аудио
-        // Мы берем поток из интернета -> ускоряем -> отдаем в Discord
-        const ffmpegProcess = spawn(ffmpegPath, [
-            '-i', url,                // Вход: URL от Google
-            '-filter:a', `atempo=${SPEECH_SPEED}`, // Фильтр: ускорение темпа без изменения высоты голоса
-            '-f', 'opus',             // Выход: формат Opus (родной для Discord)
-            '-ar', '48000',           // Частота: 48кГц (стандарт Discord)
-            '-ac', '1',               // Каналы: Моно (экономит трафик)
-            'pipe:1'                  // Вывод: в стандартный поток (stdout)
-        ]);
+        results.forEach(item => queue.push(item.url));
 
-        // 5. Создаем ресурс из вывода FFmpeg
-        const resource = createAudioResource(ffmpegProcess.stdout, {
-            inputType: StreamType.Arbitrary,
-            inlineVolume: true
-        });
-
-        // Если возникнет ошибка внутри FFmpeg, выведем её
-        ffmpegProcess.stderr.on('data', (data) => {
-            // Раскомментируй строку ниже только для глубокой отладки, иначе будет спам
-            // console.log(`FFmpeg Log: ${data}`); 
-        });
-
-        player.play(resource);
+        // 6. Ставим реакцию и запускаем чтение
+        await message.react('❌');
+        playNextInQueue(guildId);
 
     } catch (error) {
-        console.error("TTS Error:", error.message);
+        console.error(`TTS Error [${guildId}]:`, error.message);
     }
 }
+
+client.on('messageReactionAdd', async (reaction, user) => {
+    if (user.bot || reaction.emoji.name !== '❌') return;
+
+    const guildId = reaction.message.guild.id;
+    const player = guildPlayers.get(guildId);
+    const queue = guildQueues.get(guildId);
+
+    if (player && queue) {
+        queue.length = 0;
+        player.stop();
+        console.log(`Пользователь ${user.username} остановил чтение на сервере ${reaction.message.guild.name}.`);
+    }
+});
 
 
 //   
@@ -617,7 +676,7 @@ const autoKickSpam = async (msg) => {
             } else {
                 await msg.author.send(phrases.kickForSpam(msg).en);
             }
-            await client.users.fetch(env.adminId).send(`<@${msg.userId}> was banned from "${msg.guild.name}" server`)
+            await sendMsgToAdmin(`<@${msg.userId}> was banned from "${msg.guild.name}" server`)
         } catch (error) {
             console.error(`Error in send kick for spam message: ${error}`);
         }
@@ -649,7 +708,7 @@ const autoKickSpam = async (msg) => {
 client.once('ready', async () => {
     console.log('Bot is ready!');
     await registerCommands(client); //регает слеш команды при запуске
-    console.log('test deploy 3')
+    await sendMsgToAdmin('Bot started')
 });
 
 client.on('messageCreate', async (msg) => {
