@@ -87,7 +87,14 @@ function playStream(url, guildId, speechSpeed) {
     });
 
     ffmpegProcess.stderr.on('data', (data) => {
-        // Логирование ошибок FFmpeg (если нужно)
+        // Показываем все, что FFmpeg говорит в stderr
+        console.error(`FFMPEG ERROR [${guildId}]: ${data.toString()}`); 
+    });
+
+    ffmpegProcess.on('close', (code) => {
+        if (code !== 0) {
+            console.error(`FFMPEG PROCESS CLOSED WITH ERROR CODE ${code} on guild ${guildId}`);
+        }
     });
 
     player.play(resource);
