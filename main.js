@@ -188,7 +188,7 @@ async function executeVoiceTTS(message) {
         queueData.queue.push(...results.map(item => item.url));
 
         // 7. Ставим реакцию и запускаем чтение
-        await message.react('❌');
+        await message.react('🔇');
         playNextInQueue(guildId);
 
     } catch (error) {
