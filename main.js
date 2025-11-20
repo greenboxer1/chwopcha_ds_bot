@@ -198,7 +198,7 @@ async function executeVoiceTTS(message) {
 
 // Обработка нажатия на крестик (кнопка "Стоп")
 client.on('messageReactionAdd', async (reaction, user) => {
-    if (user.bot || reaction.emoji.name !== '❌') return;
+    if (user.bot || reaction.emoji.name !== '🔇') return;
 
     const guildId = reaction.message.guild.id;
     const player = guildPlayers.get(guildId);
