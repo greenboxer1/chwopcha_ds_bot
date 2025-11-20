@@ -472,46 +472,66 @@ async function showEmbedModal(interaction) {
 
 // Обработка отправки модального окна
 async function handleModalSubmit(interaction) {
-    if (interaction.customId === 'embed_modal') {
-        const title = interaction.fields.getTextInputValue('embed_title');
-        const description = interaction.fields.getTextInputValue('embed_description');
-        const color = interaction.fields.getTextInputValue('embed_color');
-        const image = interaction.fields.getTextInputValue('embed_image');
-        const thumbnail = interaction.fields.getTextInputValue('embed_thumbnail');
+    if (interaction.customId !== 'embed_modal') return;
 
-        // Создаем эмбед
-        const embed = new EmbedBuilder()
-            .setDescription(description);
+    await interaction.deferReply({ ephemeral: true });
 
-        // Добавляем опциональные поля если они есть
-        if (title) embed.setTitle(title);
-        if (color) {
-            // Конвертируем HEX в число
-            const hexColor = color.replace('#', '');
-            embed.setColor(parseInt(hexColor, 16));
-        } else {
-            // Цвет по умолчанию, если не указан
-            embed.setColor(0x0099FF);
-        }
-        if (image) embed.setImage(image);
-        if (thumbnail) embed.setThumbnail(thumbnail);
+    const title       = interaction.fields.getTextInputValue('embed_title') || null;
+    const description = interaction.fields.getTextInputValue('embed_description');
+    const color       = interaction.fields.getTextInputValue('embed_color');
+    const image       = interaction.fields.getTextInputValue('embed_image') || null;
+    const thumbnail   = interaction.fields.getTextInputValue('embed_thumbnail') || null;
 
+    const embed = new EmbedBuilder().setDescription(description || ' ');
+
+    if (title) embed.setTitle(title);
+
+    // === Цвет (уже починили раньше) ===
+    if (color?.trim()) {
+        const colorInt = parseInt(color.trim().replace('#', ''), 16);
+        embed.setColor(isNaN(colorInt) || colorInt > 0xFFFFFF ? 0x0099FF : colorInt);
+    } else {
+        embed.setColor(0x0099FF);
+    }
+
+    // === БЕЗОПАСНАЯ функция для установки изображения ===
+    const setImageSafely = (url) => {
+        if (!url || !url.trim()) return;
         try {
-            // Отправляем эмбед как обычное сообщение в канал
-            await interaction.channel.send({ embeds: [embed] });
-            
-            // Отправляем подтверждение пользователю (эпиhemeral)
-            await interaction.reply({
-                content: 'Эмбед успешно отправлен в канал!',
-                ephemeral: true
-            });
-        } catch (error) {
-            console.error('Ошибка при отправке эмбеда:', error);
-            await interaction.reply({
-                content: 'Произошла ошибка при отправке эмбеда. Убедитесь, что у бота есть права на отправку сообщений в этот канал.',
-                ephemeral: true
-            });
+            new URL(url.trim()); // простая проверка, что это URL
+            if (/https?:\/\/.*\.(png|jpe?g|gif|webp)/i.test(url)) {
+                embed.setImage(url.trim());
+            }
+            // если не картинка — просто игнорим, не крашим
+        } catch {
+            // невалидный URL — молча игнорим
         }
+    };
+
+    const setThumbnailSafely = (url) => {
+        if (!url || !url.trim()) return;
+        try {
+            new URL(url.trim());
+            if (/https?:\/\/.*\.(png|jpe?g|gif|webp)/i.test(url)) {
+                embed.setThumbnail(url.trim());
+            }
+        } catch {
+            // игнор
+        }
+    };
+
+    setImageSafely(image);
+    setThumbnailSafely(thumbnail);
+
+    // === Теперь try/catch точно всё поймает ===
+    try {
+        await interaction.channel.send({ embeds: [embed] });
+        await interaction.editReply({ content: 'Эмбед успешно отправлен в канал!' });
+    } catch (error) {
+        console.error('Ошибка при F отправке:', error);
+        await interaction.editReply({ 
+            content: 'Не смог отправить эмбед (нет прав или канал удалён)' 
+        });
     }
 }
 
