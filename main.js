@@ -13,7 +13,8 @@ import {
     createAudioResource, 
     StreamType, 
     NoSubscriberBehavior,
-    AudioPlayerStatus
+    AudioPlayerStatus,
+    getVoiceConnection
 } from '@discordjs/voice';
 import googleTTS from 'google-tts-api';
 import ffmpegPath from 'ffmpeg-static';
@@ -70,156 +71,231 @@ const sendMsgToAdmin = async(text_message) => {
 
 // ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА
 
-const FFMPEG_COMMAND = process.platform === 'win32' ? ffmpegPath : 'ffmpeg'; //!!! для линукса apt install ffmpeg !!! использует локальный ффмпег для винды и глобальный для линукс
+const SPEECH_SPEEDS = {
+    'ru': '1.3', 
+    'en': '1.1' 
+}; 
 
-function playStream(url, guildId, speechSpeed) {
-    const player = guildPlayers.get(guildId);
-    if (!player) return;
+// Выбор FFmpeg: на Windows берем статик, на Linux системный
+const FFMPEG_COMMAND = process.platform === 'win32' ? ffmpegPath : 'ffmpeg';
 
+// ==========================================
+// 2. СЕССИИ (Состояние серверов)
+// ==========================================
+// Key: GuildID, Value: Session Object
+const sessions = new Map();
+
+/**
+ * Получает сессию для сервера или создает новую
+ */
+function getSession(guildId) {
+    if (!sessions.has(guildId)) {
+        sessions.set(guildId, {
+            player: createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Pause } }),
+            queue: [],          // Очередь: [{ url, message }]
+            currentItem: null,  // Что играет сейчас
+            speechSpeed: '1.3'
+        });
+
+        const session = sessions.get(guildId);
+        
+        // Настраиваем слушатели ОДИН РАЗ при создании сессии
+        session.player.on(AudioPlayerStatus.Idle, () => {
+            processQueue(guildId); // Когда договорил -> следующий
+        });
+
+        session.player.on('error', (error) => {
+            console.error(`Player Error [${guildId}]:`, error.message);
+            processQueue(guildId); // При ошибке -> следующий
+        });
+    }
+    return sessions.get(guildId);
+}
+
+// ==========================================
+// 3. АУДИО ЛОГИКА
+// ==========================================
+
+/**
+ * Запускает FFmpeg и передает поток в плеер
+ */
+function playStream(session, url) {
     const ffmpegProcess = spawn(FFMPEG_COMMAND, [
+        '-analyzeduration', '0',
+        '-probesize', '32',
         '-user_agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         '-i', url,
-        '-filter:a', `atempo=${speechSpeed}`,
+        '-filter:a', `atempo=${session.speechSpeed}`,
         '-f', 'opus',
         '-ar', '48000',
         '-ac', '1',
         'pipe:1'
     ]);
 
+    // Глушим stderr, чтобы не засорять консоль, если всё ок
+    ffmpegProcess.stderr.on('data', () => {}); 
+
     const resource = createAudioResource(ffmpegProcess.stdout, {
         inputType: StreamType.Arbitrary,
         inlineVolume: true
     });
 
-
-    //Логирование ошибок ffmpeg разкомментируй если опять хуйня начнется
-    // ffmpegProcess.stderr.on('data', (data) => {
-    //     // Показываем все, что FFmpeg говорит в stderr
-    //     console.error(`FFMPEG ERROR [${guildId}]: ${data.toString()}`); 
-    // });
-
-    // ffmpegProcess.on('close', (code) => {
-    //     if (code !== 0) {
-    //         console.error(`FFMPEG PROCESS CLOSED WITH ERROR CODE ${code} on guild ${guildId}`);
-    //     }
-    // });
-
-    player.play(resource);
+    session.player.play(resource);
 }
 
-function playNextInQueue(guildId) { 
-    const queueData = guildQueues.get(guildId);
-    
-    if (!queueData || queueData.queue.length === 0) return;
-    
-    const nextUrl = queueData.queue.shift();
-    const speechSpeed = queueData.speechSpeed;
+/**
+ * Обрабатывает очередь: берет следующий трек и удаляет реакции
+ */
+async function processQueue(guildId) {
+    const session = sessions.get(guildId);
+    if (!session) return;
 
-    playStream(nextUrl, guildId, speechSpeed); 
+    // --- ЛОГИКА УДАЛЕНИЯ РЕАКЦИИ ---
+    // Если что-то играло до этого
+    if (session.currentItem) {
+        const prevMsg = session.currentItem.message;
+        const nextItem = session.queue[0];
+
+        // Если очередь пуста ИЛИ следующее сообщение отличается от предыдущего
+        // Значит, мы дочитали сообщение до конца
+        if (!nextItem || nextItem.message.id !== prevMsg.id) {
+            try {
+                const reaction = prevMsg.reactions.cache.get('🔇');
+                if (reaction) await reaction.users.remove(client.user.id);
+            } catch (e) { /* Игнор ошибок (сообщение удалено и т.д.) */ }
+        }
+    }
+
+    // Если пусто - останавливаемся
+    if (session.queue.length === 0) {
+        session.currentItem = null;
+        return;
+    }
+
+    // Берем следующий
+    const nextTrack = session.queue.shift();
+    session.currentItem = nextTrack;
+
+    playStream(session, nextTrack.url);
 }
 
-const SPEECH_SPEEDS = {
-    'ru': '1.5',
-    'en': '1.4'  
-}; 
+// ==========================================
+// 4. ФУНКЦИЯ TTS (Которую ты потерял)
+// ==========================================
 
-const guildPlayers = new Map(); 
-const guildQueues = new Map();
-
-async function executeVoiceTTS(message) {
-    const guildId = message.guild.id;
-
-    // 1. Проверки
+export async function executeVoiceTTS(message) {
+    // 1. Проверки валидности
     if (message.author.bot || !message.content) return;
     if (message.channel.type !== ChannelType.GuildVoice) return;
+
+    const guildId = message.guild.id;
     
-    // 2. ПОЛУЧАЕМ ЯЗЫК СЕРВЕРА И СКОРОСТЬ
-    const lang = getServerLang(message); 
-    const speechSpeed = SPEECH_SPEEDS[lang] || SPEECH_SPEEDS['ru']; 
+    // 2. Проверка: Автор в том же канале?
+    const memberVoiceChannelId = message.member?.voice?.channelId;
+    const botChannelId = message.channel.id;
+
+    if (!memberVoiceChannelId || memberVoiceChannelId !== botChannelId) {
+        return; // Игнорируем "чужаков"
+    }
+
+    // 3. Проверка: Есть ли живые люди?
+    const voiceChannel = message.guild.channels.cache.get(botChannelId);
+    const humans = voiceChannel.members.filter(m => !m.user.bot).size;
+    
+    if (humans === 0) {
+        const connection = getVoiceConnection(guildId);
+        if (connection) connection.destroy();
+        return;
+    }
 
     try {
-        // 3. Инициализация плеера для этого сервера
-        let player = guildPlayers.get(guildId);
-        // Если плеер не существует, создаем его и настраиваем слушатели
-        if (!player) {
-            player = createAudioPlayer({
-                behaviors: { noSubscriber: NoSubscriberBehavior.Pause },
-            });
-            guildPlayers.set(guildId, player); 
+        // Получаем сессию
+        const session = getSession(guildId);
 
-            // Настраиваем слушатель (Idle) для НОВОГО плеера
-            player.on(AudioPlayerStatus.Idle, () => {
-                playNextInQueue(guildId);
-            });
-            player.on('error', error => {
-                console.error(`Audio Player Error [${guildId}]:`, error.message);
-            });
-        }
-        
-        // 4. Очистка и подготовка
-        // Очищаем старую очередь и останавливаем плеер (если его перебили)
-        guildQueues.set(guildId, {
-            queue: [], // Очищаем очередь
-            lang: lang, 
-            speechSpeed: speechSpeed
-        });
-        player.stop();    
-        
-        // Получаем объект очереди
-        let queueData = guildQueues.get(guildId);
+        // Настройки языка
+        const lang = getServerLang(message)
+        session.speechSpeed = SPEECH_SPEEDS[lang] || SPEECH_SPEEDS['ru'];
 
-        // 5. Подключение к каналу
-        const connection = joinVoiceChannel({
-            channelId: message.channel.id,
-            guildId: guildId,
-            adapterCreator: message.guild.voiceAdapterCreator,
-            selfDeaf: true,
-        });
-        connection.subscribe(player); 
-
-        // 6. Разбиение длинного текста и заполнение очереди
+        // Генерация ссылок
         const results = googleTTS.getAllAudioUrls(message.content, {
-            lang: lang, 
+            lang: lang,
             slow: false,
             host: 'https://translate.google.com',
         });
 
-        // Заполняем массив URL в объекте очереди
-        queueData.queue.push(...results.map(item => item.url));
+        // Добавляем в очередь
+        results.forEach(item => {
+            session.queue.push({
+                url: item.url,
+                message: message
+            });
+        });
 
-        // 7. Ставим реакцию и запускаем чтение
         await message.react('🔇');
-        playNextInQueue(guildId);
+
+        // Подключение
+        const connection = joinVoiceChannel({
+            channelId: botChannelId,
+            guildId: guildId,
+            adapterCreator: message.guild.voiceAdapterCreator,
+            selfDeaf: true,
+        });
+        connection.subscribe(session.player);
+
+        // Если плеер спит - будим его
+        if (session.player.state.status === AudioPlayerStatus.Idle) {
+            processQueue(guildId);
+        }
 
     } catch (error) {
-        console.error(`TTS Error [${guildId}]:`, error.message);
+        console.error("TTS Error:", error);
     }
 }
 
-// Обработка нажатия на крестик (кнопка "Стоп")
+// --- Автовыход (Voice State Update) ---
+client.on('voiceStateUpdate', (oldState, newState) => {
+    const channel = oldState.channel;
+    if (!channel) return;
+
+    const guildId = channel.guild.id;
+    const connection = getVoiceConnection(guildId);
+
+    // Если бот в этом канале
+    if (connection && connection.joinConfig.channelId === channel.id) {
+        const humans = channel.members.filter(m => !m.user.bot).size;
+        
+        // Если все вышли
+        if (humans === 0) {
+            connection.destroy();
+            if (sessions.has(guildId)) {
+                const session = sessions.get(guildId);
+                session.player.stop();
+                session.queue = [];
+                session.currentItem = null;
+            }
+        }
+    }
+});
+
+// --- Кнопка Стоп ---
 client.on('messageReactionAdd', async (reaction, user) => {
     if (user.bot || reaction.emoji.name !== '🔇') return;
 
     const guildId = reaction.message.guild.id;
-    const player = guildPlayers.get(guildId);
-    const queueData = guildQueues.get(guildId);
+    if (sessions.has(guildId)) {
+        const session = sessions.get(guildId);
+        
+        session.player.stop();
+        session.queue = [];
+        session.currentItem = null;
 
-    // Останавливаем, только если плеер и очередь существуют для этого сервера
-    if (player && queueData) {
-        queueData.queue.length = 0; // Очищаем очередь
-        player.stop();    // Останавливаем текущее воспроизведение
-        
-        // Опционально: удаляем реакцию, чтобы кнопка не выглядела нажатой
         try {
-            await reaction.users.remove(user.id);
-        } catch (e) {
-            console.error('Не удалось удалить реакцию:', e);
-        }
+            await reaction.users.remove(client.user.id);
+        } catch (e) {}
         
-        console.log(`Пользователь ${user.username} остановил чтение на сервере ${reaction.message.guild.name}.`);
+        console.log(`[Stop] ${user.username} остановил TTS.`);
     }
 });
-
 
 //   
 //  СЛЕШ КОМАНДЫ КНОПКИ И ПРОЧАЯ ХУЕТА СЛЕШ КОМАНДЫ КНОПКИ И ПРОЧАЯ ХУЕТА

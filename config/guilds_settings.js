@@ -116,6 +116,24 @@ const channelConfigs = [
         autoBanSpam: true,
         channels: []
     },
+    {
+        serverName: 'UBUP (едмщики мизыканты крутые)',
+        guildId: '891787989221531759',
+        lang: 'ru',
+        isTwitterAutoChange: true,
+        twitterAutoChangeBlackList: ['нет'],
+        autoBanSpam: true,
+        channels: []
+    },
+    {
+        serverName: 'Helish paradise (серв миши)',
+        guildId: '1175055057813766184',
+        lang: 'ru',
+        isTwitterAutoChange: true,
+        twitterAutoChangeBlackList: ['нет'],
+        autoBanSpam: true,
+        channels: []
+    },
 ];
 
 export default channelConfigs
