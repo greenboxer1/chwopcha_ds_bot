@@ -15,6 +15,7 @@
 * A reaction appears under each message; when clicked, the bot stops reading the message if some troll posts a very long message.
 ## Twitter link auto-replacement
 * Replaces any Twitter links with vxtwitter (videos and gifs play in Discord without clicking the link)
+* Black list channels
 ## Embed messages in a pop-up window
 * title, description 
 * images links
