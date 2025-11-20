@@ -221,6 +221,7 @@ export async function executeVoiceTTS(message) {
             lang: lang,
             slow: false,
             host: 'https://translate.google.com',
+            splitPunctuation: '.!?,:;'
         });
 
         // Добавляем в очередь
