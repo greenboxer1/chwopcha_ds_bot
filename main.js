@@ -489,9 +489,9 @@ async function handleModalSubmit(interaction) {
     // === Цвет (уже починили раньше) ===
     if (color?.trim()) {
         const colorInt = parseInt(color.trim().replace('#', ''), 16);
-        embed.setColor(isNaN(colorInt) || colorInt > 0xFFFFFF ? 0x0099FF : colorInt);
+        embed.setColor(isNaN(colorInt) || colorInt > 0xFFFFFF ? 0xB4FBFF : colorInt);
     } else {
-        embed.setColor(0x0099FF);
+        embed.setColor(0xB4FBFF);
     }
 
     // === БЕЗОПАСНАЯ функция для установки изображения ===
