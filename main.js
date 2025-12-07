@@ -863,6 +863,22 @@ client.on('messageCreate', async (msg) => {
     twitterAutoChange(msg)
     autoKickSpam(msg)
     executeVoiceTTS(msg)
+
+
+    //спокойно ночи временное мемное 
+    if (msg.content === 'cmqhjzjep;qoe91831jkd') {
+        await msg.delete().catch(() => {});
+
+        await msg.channel.send({
+            files: [{
+                attachment: './static/audio/sleep.ogg',
+                name: 'sleep.ogg'   // ← ЭТО САМОЕМО ГЛАВНОЕ
+            }]
+        });
+    }
+
+
+
 });
 
 client.login(env.token);
