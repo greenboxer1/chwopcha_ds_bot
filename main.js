@@ -27,6 +27,19 @@ import env from "./config/env.js";
 import channelConfigs from "./config/guilds_settings.js";
 import * as phrases from "./config/phrases.js";
 
+//Мои вспомогательные функции
+const dateNow = () => {
+    const now = new Date();
+    const padZero = (num) => num < 10 ? `0${num}` : num;
+    return `${padZero(now.getDate())}.${padZero(now.getMonth() + 1)}.${now.getFullYear()} (${padZero(now.getHours())}:${padZero(now.getMinutes())})`;
+}
+
+const debug = (consoleMsg) => {
+    console.log(`[${dateNow()}] ${consoleMsg}`)
+}
+
+debug('Script started')
+
 
 const client = new Client({
     intents: [
@@ -41,12 +54,6 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 })
 
-//Мои вспомогательные функции
-const dateNow = () => {
-    const now = new Date();
-    const padZero = (num) => num < 10 ? `0${num}` : num;
-    return `${padZero(now.getDate())}.${padZero(now.getMonth() + 1)}.${now.getFullYear()} (${padZero(now.getHours())}:${padZero(now.getMinutes())})`;
-}
 
 const getServerConfig = (msg) => {
     return channelConfigs.filter(guild => guild.guildId === msg.guildId)[0]
@@ -56,9 +63,7 @@ const getServerLang = (msg) => {
     return getServerConfig(msg).lang
 }
 
-const debug = (consoleMsg) => {
-    console.log(`[${dateNow()}] ${consoleMsg}`)
-}
+
 
 const sendMsgToAdmin = async(text_message) => {
     try {
@@ -841,7 +846,7 @@ const autoKickSpam = async (msg) => {
 
 
 client.on('ready', async () => {
-    console.log('Bot is ready!');
+    debug('Bot started')
     await registerCommands(client); //регает слеш команды при запуске
     await sendMsgToAdmin('Bot started')
 
@@ -863,24 +868,15 @@ client.on('messageCreate', async (msg) => {
     twitterAutoChange(msg)
     autoKickSpam(msg)
     executeVoiceTTS(msg)
-
-
-    //спокойно ночи временное мемное 
-    if (msg.content === 'cmqhjzjep;qoe91831jkd') {
-        await msg.delete().catch(() => {});
-
-        await msg.channel.send({
-            files: [{
-                attachment: './static/audio/sleep.ogg',
-                name: 'sleep.ogg'   // ← ЭТО САМОЕМО ГЛАВНОЕ
-            }]
-        });
-    }
-
-
-
 });
 
 client.login(env.token);
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+});
 
 
