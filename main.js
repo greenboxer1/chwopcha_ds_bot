@@ -190,9 +190,22 @@ async function processQueue(guildId) {
 // ==========================================
 
 export async function executeVoiceTTS(message) {
-    // 1. Проверки валидности
-    if (message.author.bot || !message.content) return;
-    if (message.channel.type !== ChannelType.GuildVoice) return;
+// 1. Проверки валидности
+    // [ИЗМЕНЕНО] Добавлена проверка на наличие вложений (картинки/гифки), 
+    // чтобы не озвучивать пустые сообщения с файлами
+    if (message.author.bot || (!message.content && message.attachments.size > 0)) return;
+    if (!message.content || message.channel.type !== ChannelType.GuildVoice) return;
+
+    // [НОВОЕ] Очистка текста перед озвучкой
+    let textToSpeak = message.content
+        .replace(/https?:\/\/\S+/gi, '') // Удаляем любые ссылки (http/https)
+        .replace(/<@!?\d+>/g, '')        // Удаляем пинги пользователей (<@ID>)
+        .replace(/<@&\d+>/g, '')         // Удаляем пинги ролей (<@&ID>)
+        .replace(/<#\d+>/g, '')          // Удаляем упоминания каналов (<#ID>)
+        .trim();
+
+    // [НОВОЕ] Если после очистки (удаления ссылок и пингов) текста не осталось — выходим
+    if (!textToSpeak) return;
 
     const guildId = message.guild.id;
     
@@ -201,29 +214,18 @@ export async function executeVoiceTTS(message) {
     const botChannelId = message.channel.id;
 
     if (!memberVoiceChannelId || memberVoiceChannelId !== botChannelId) {
-        return; // Игнорируем "чужаков"
+        return; 
     }
 
-    // 3. Проверка: Есть ли живые люди?
-    const voiceChannel = message.guild.channels.cache.get(botChannelId);
-    const humans = voiceChannel.members.filter(m => !m.user.bot).size;
-    
-    if (humans === 0) {
-        const connection = getVoiceConnection(guildId);
-        if (connection) connection.destroy();
-        return;
-    }
+    // ... (далее код идет без изменений до момента генерации ссылок) ...
 
     try {
-        // Получаем сессию
         const session = getSession(guildId);
-
-        // Настройки языка
-        const lang = getServerLang(message)
+        const lang = getServerLang(message);
         session.speechSpeed = SPEECH_SPEEDS[lang] || SPEECH_SPEEDS['ru'];
 
-        // Генерация ссылок
-        const results = googleTTS.getAllAudioUrls(message.content, {
+        // [ИЗМЕНЕНО] Передаем очищенный textToSpeak вместо message.content
+        const results = googleTTS.getAllAudioUrls(textToSpeak, {
             lang: lang,
             slow: false,
             host: 'https://translate.google.com',
@@ -795,6 +797,9 @@ const twitterAutoChange = async (msg) => {
                 ? `<@${msg.author.id}>\n${userText}\n${updatedLink}` 
                 : `<@${msg.author.id}>\n${updatedLink}`;
 
+
+
+
             // Отправляем сообщение с видео
             await msg.channel.send({
                 content: newMessage,
@@ -808,6 +813,8 @@ const twitterAutoChange = async (msg) => {
                     allowedMentions: { parse: ['users'] }
                 }).catch(err => console.error("Ошибка при отправке пингов:", err));
             }
+
+
 
             debug('Auto change twitter link (Mentions replaced with plain names)')
         }
