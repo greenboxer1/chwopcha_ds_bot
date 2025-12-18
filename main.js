@@ -848,7 +848,7 @@ const autoKickSpam = async (msg) => {
         guildUsers.set(userId, {
             channels: new Set(),
             lastMessageTime: currentTime,
-            timer: setTimeout(() => guildUsers.delete(userId), 80000)
+            timer: setTimeout(() => guildUsers.delete(userId), 60000)
         });
     }
 
@@ -859,7 +859,7 @@ const autoKickSpam = async (msg) => {
     userData.lastMessageTime = currentTime;
 
     // Проверяем условия спама
-    if (userData.channels.size >= 6) {
+    if (userData.channels.size >= 4) {
         debug(`<@${msg.author.id}> (${msg.member.displayName}) USER WAS BANNED FROM "${msg.guild.name}" SERVER FOR SPAM`)
         await sendMsgToAdmin(`<@${msg.author.id}> was banned from "${msg.guild.name}" server`)
         try {
