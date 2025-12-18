@@ -26,6 +26,7 @@ import process from 'process';
 import env from "./config/env.js";
 import channelConfigs from "./config/guilds_settings.js";
 import * as phrases from "./config/phrases.js";
+import { json } from 'stream/consumers';
 
 //Мои вспомогательные функции
 const dateNow = () => {
@@ -298,8 +299,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
         try {
             await reaction.users.remove(client.user.id);
         } catch (e) {}
-        
-        console.log(`[Stop] ${user.username} остановил TTS.`);
+        debug(`[Stop] ${user.username} остановил TTS.`)
     }
 });
 
@@ -340,14 +340,14 @@ const registerCommands = async (client) => {
     const rest = new REST({ version: '10', timeout: 30000 }).setToken(env.token);
 
     try {
-        console.log('Started refreshing application (/) commands for all guilds.');
+        debug('Started refreshing application (/) commands for all guilds.');
         
         // Получаем все серверы где находится бот
         const guilds = client.guilds.cache;
         const registerPromises = [];
 
         for (const [guildId, guild] of guilds) {
-            console.log(`Registering commands for guild: ${guild.name} (${guildId})`);
+            debug(`Registering commands for guild: ${guild.name} (${guildId})`);
             
             const promise = rest.put(
                 Routes.applicationGuildCommands(env.clientId, guildId),
@@ -360,7 +360,7 @@ const registerCommands = async (client) => {
         }
 
         await Promise.all(registerPromises);
-        console.log(`Successfully registered commands for ${guilds.size} guilds.`);
+        debug(`Successfully registered commands for ${guilds.size} guilds.`);
     } catch (error) {
         console.error('Error registering commands:', error);
     }
@@ -380,6 +380,7 @@ client.on('interactionCreate', async (interaction) => {
 
 // Обработка слеш-команд
 async function handleSlashCommand(interaction) {
+    debug('Slash command create give role button')
     const { commandName } = interaction;
 
     if (commandName === 'give-role-button') {
@@ -562,6 +563,7 @@ async function createRoleButtons(interaction, role, text) {
 
 // Обработка нажатия кнопок
 async function handleButtonInteraction(interaction) {
+    debug('Some user trigger give role button')
     const roleId = interaction.customId.split('_')[2];
     const role = interaction.guild.roles.cache.get(roleId);
 
@@ -717,8 +719,10 @@ class CreativeChannelsFilter {
         if (this.isAttachmentRight(msg, chConfig.fileTypes) || this.isIncludesCorrectLinks(msg, chConfig.domains, chConfig.checkExternalPngLink)) {
             await this.createThread(msg);
             await this.addRatingReaction(msg, chConfig.rating);
+            debug('Chat validation passed, create thread')
         } else if (!await this.isLastMessageSameAuthor(msg)) {
             await this.sendWarning(msg);
+            debug('Chat validation NOT passed, deleted the message and sent warning to user')
         }
     }
 }
@@ -763,6 +767,7 @@ const twitterAutoChange = async (msg) => {
                     content: newMessage,
                     allowedMentions: { parse: [] } // Отключаем пинг
                 }).catch(err => console.error("Ошибка при отправке:", err));
+                debug('Auto change twitter link')
             }
         }
 
@@ -797,7 +802,7 @@ const autoKickSpam = async (msg) => {
         guildUsers.set(userId, {
             channels: new Set(),
             lastMessageTime: currentTime,
-            timer: setTimeout(() => guildUsers.delete(userId), 60000)
+            timer: setTimeout(() => guildUsers.delete(userId), 80000)
         });
     }
 
@@ -809,16 +814,17 @@ const autoKickSpam = async (msg) => {
 
     // Проверяем условия спама
     if (userData.channels.size >= 6) {
-        //Отправка уведомления о бане с сервера 
+        debug(`<@${msg.author.id}> (${msg.member.displayName}) USER WAS BANNED FROM "${msg.guild.name}" SERVER FOR SPAM`)
+        await sendMsgToAdmin(`<@${msg.author.id}> was banned from "${msg.guild.name}" server`)
         try {
             if (getServerLang(msg) === "ru") {
                 await msg.author.send(phrases.kickForSpam(msg).ru);
             } else {
                 await msg.author.send(phrases.kickForSpam(msg).en);
             }
-            await sendMsgToAdmin(`<@${msg.userId}> was banned from "${msg.guild.name}" server`)
         } catch (error) {
             console.error(`Error in send kick for spam message: ${error}`);
+            await sendMsgToAdmin(`<@${msg.author.id}> was banned from "${msg.guild.name}" server`)
         }
         // Очищаем данные пользователя после обнаружения
         clearTimeout(userData.timer);
