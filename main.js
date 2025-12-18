@@ -734,44 +734,78 @@ const twitterAutoChange = async (msg) => {
         return
     }
     const guildConfig = channelConfigs.filter(guild => guild.guildId === msg.guildId)[0];
+    // Добавлена проверка на существование конфига, чтобы избежать ошибок, если гильдии нет в базе
+    if (!guildConfig) return; 
+    
     const blackList = [...guildConfig.twitterAutoChangeBlackList, ...guildConfig.channels.map(chId => chId.chatId)]
-        if (guildConfig.isTwitterAutoChange === true &&  !blackList.includes(msg.channelId)) {
-            if (/https:\/\/x\.com\/\S+/.test(msg.content)) {
-                // Удаляем сообщение
-                await msg.delete().catch(err => console.error("Ошибка при удалении:", err));
+    
+    if (guildConfig.isTwitterAutoChange === true && !blackList.includes(msg.channelId)) {
+        // [ИЗМЕНЕНО] Сначала просто проверяем наличие ссылки, как раньше
+        if (/https:\/\/x\.com\/\S+/.test(msg.content)) {
 
-                // Задержка 500 мс
-                await new Promise(resolve => setTimeout(resolve, 500));
+            // [НОВОЕ] Извлекаем ID твита для проверки через API
+            const match = msg.content.match(/x\.com\/[a-zA-Z0-9_]+\/status\/([0-9]+)/);
+            
+            // [НОВОЕ] Если ID найден, делаем проверку контента
+            if (match && match[1]) {
+                const tweetId = match[1];
+                try {
+                    // [НОВОЕ] Запрос к API vxtwitter для получения метаданных
+                    const apiResponse = await fetch(`https://api.vxtwitter.com/Twitter/status/${tweetId}`);
+                    const data = await apiResponse.json();
 
-                // Извлекаем ссылку
-                const linkMatch = msg.content.match(/https:\/\/x\.com\/\S+/g);
-                let userText = msg.content;
-                let updatedLink = "";
+                    // [НОВОЕ] Проверяем, есть ли видео или gif в media_extended
+                    const hasVideoOrGif = data.media_extended && data.media_extended.some(media => media.type === 'video' || media.type === 'gif');
 
-                if (linkMatch) {
-                    // Заменяем ссылку на vxtwitter.com
-                    updatedLink = linkMatch[0].replace(/https:\/\/x\.com\/(\S+)/, "https://vxtwitter.com/$1");
+                    // [НОВОЕ] Если видео или гифки НЕТ, мы выходим из функции и ничего не трогаем
+                    if (!hasVideoOrGif) {
+                        return; 
+                    }
 
-                    // Убираем ссылку из текста
-                    userText = msg.content.replace(/https:\/\/x\.com\/\S+/g, "").trim();
-                    if (!userText) userText = ""; // Если текста нет, оставляем пустую строку
+                } catch (error) {
+                    console.error("Ошибка при проверке API vxtwitter:", error);
+                    // [НОВОЕ] Если API упал, лучше вернуть return, чтобы не удалять лишнее, 
+                    // или убрать return, если хочешь заменять ссылку в любом случае при ошибке.
+                    return; 
                 }
-
-                // Собираем новое сообщение в порядке: ник → текст → ссылка
-                const newMessage = userText
-                    ? `<@${msg.author.id}>\n${userText}\n${updatedLink}` // Если есть текст, добавляем его между ником и ссылкой
-                    : `<@${msg.author.id}>\n${updatedLink}`; // Если текста нет, только ник и ссылка
-
-                // Отправляем новое сообщение
-                msg.channel.send({
-                    content: newMessage,
-                    allowedMentions: { parse: [] } // Отключаем пинг
-                }).catch(err => console.error("Ошибка при отправке:", err));
-                debug('Auto change twitter link')
             }
+
+            // --- Логика ниже выполняется ТОЛЬКО если это видео или гифка ---
+
+            // Удаляем сообщение
+            await msg.delete().catch(err => console.error("Ошибка при удалении:", err));
+
+            // Задержка 500 мс
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Извлекаем ссылку
+            const linkMatch = msg.content.match(/https:\/\/x\.com\/\S+/g);
+            let userText = msg.content;
+            let updatedLink = "";
+
+            if (linkMatch) {
+                // Заменяем ссылку на vxtwitter.com
+                updatedLink = linkMatch[0].replace(/https:\/\/x\.com\/(\S+)/, "https://vxtwitter.com/$1");
+
+                // Убираем ссылку из текста
+                userText = msg.content.replace(/https:\/\/x\.com\/\S+/g, "").trim();
+                if (!userText) userText = ""; // Если текста нет, оставляем пустую строку
+            }
+
+            // Собираем новое сообщение в порядке: ник → текст → ссылка
+            const newMessage = userText
+                ? `<@${msg.author.id}>\n${userText}\n${updatedLink}` // Если есть текст, добавляем его между ником и ссылкой
+                : `<@${msg.author.id}>\n${updatedLink}`; // Если текста нет, только ник и ссылка
+
+            // Отправляем новое сообщение
+            msg.channel.send({
+                content: newMessage,
+                allowedMentions: { parse: [] } // Отключаем пинг
+            }).catch(err => console.error("Ошибка при отправке:", err));
+            
+            debug('Auto change twitter link (Video/GIF detected)') // [ИЗМЕНЕНО] Обновил лог
         }
-
-
+    }
 }
 
 
