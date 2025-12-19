@@ -382,18 +382,18 @@ client.on('interactionCreate', async (interaction) => {
 
 // Обработка слеш-команд
 async function handleSlashCommand(interaction) {
-    debug('Slash command create give role button')
     const { commandName } = interaction;
 
     if (commandName === 'give-role-button') {
         // Проверка прав администратора
         if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+            debug('No permisson to use slash command create give role button ')
             return await interaction.reply({
                 content: 'You do not have permission to use this command! Administrator rights required.',
                 ephemeral: true
             });
         }
-
+        debug('Slash command create give role button')
         const role = interaction.options.getRole('role');
         const text = interaction.options.getString('text');
 
