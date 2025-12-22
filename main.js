@@ -62,6 +62,7 @@ const replyPingWithAi = async(msg) => {
             { role: "system", content: env.aiSystemPrompt },
             { role: "user", content: prompt }
           ],
+          max_tokens: 800,
         });
 
         const text = completion.choices[0].message.content;
