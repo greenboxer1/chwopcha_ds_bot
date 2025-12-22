@@ -50,7 +50,7 @@ const openai = new OpenAI({
 
 const replyPingWithAi = async(msg) => {
     if (!msg.mentions.users.has(msg.client.user.id) || msg.author.bot) return;
-    if (!message.content.includes(`<@${message.client.user.id}>`) && !message.content.includes(`<@!${message.client.user.id}>`)) return;
+    if (!message.content.includes(`<@${msg.client.user.id}>`) && !msg.content.includes(`<@!${msg.client.user.id}>`)) return;
 
     try {
         const prompt = msg.content.replace(/<@!?\d+>/g, '').trim();
