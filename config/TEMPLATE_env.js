@@ -3,7 +3,8 @@ const env = {
     clientId: 'BOT_ID', //id of bot
     adminId: 'ID OF GENERAL ADMIN OF BOT', //id of general admin of bot
     debug: false, //debug mode
-    googleAiApiKey: 'token' // https://aistudio.google.com/api-keys
+    openrouterApiKey: 'token', // https://openrouter.ai/settings/keys
+    aiModelName: 'model name' //Any from https://openrouter.ai/models?fmt=cards&input_modalities=text&output_modalities=text&max_price=0
 }
 
 export default env

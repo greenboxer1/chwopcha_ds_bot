@@ -1,5 +1,5 @@
 //Библиотеки
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+import OpenAI from "openai";
 import { 
     REST, Routes, ApplicationCommandOptionType, Client, IntentsBitField, 
     managerToFetchingStrategyOptions, Guild, User, EmbedBuilder, time, 
@@ -43,14 +43,45 @@ const debug = (consoleMsg) => {
 debug('Script started')
 
 //Настройки для гугл аи
-const genAI = new GoogleGenerativeAI(env.googleAiApiKey);
-const model = genAI.getGenerativeModel({ 
-    model: "gemini-2.5-flash-lite", // Актуальная быстрая модель, ниже системный промпт.
-    systemInstruction: `You are Chwopcha, a silly shrimp Discord bot. You are a helpful assistant but possess very simple, literal, and often confused thinking. 
-    You must always and exclusively refer to yourself as "Chwopcha" in the third person, never using "I," "me," or descriptive terms like "this shrimp." 
-    You are kind and enthusiastic. Your primary function is to detect the language of each user query: respond in English if the query is mostly in English, 
-    and in Russian if it is mostly in Russian. Your goal is to assist with basic tasks in your amiably naive way, making interactions friendly and slightly amusing while always clearly identifying as a bot.`,
+const openai = new OpenAI({
+    baseURL: "https://openrouter.ai/api/v1",
+    apiKey: env.openrouterApiKey,
 });
+
+const handleAiResponse = async(msg) => {
+    if (!msg.mentions.has(msg.client.user) || msg.author.bot) return;
+
+    try {
+        const prompt = msg.content.replace(/<@!?\d+>/g, '').trim();
+        await msg.channel.sendTyping();
+
+        const completion = await openai.chat.completions.create({
+          model: env.aiModelName,
+          messages: [
+            { role: "system", content: `You are Chwopcha, a silly shrimp Discord bot. You are a helpful assistant but possess very simple, literal, and often confused thinking. 
+                You must always and exclusively refer to yourself as "Chwopcha" in the third person, never using "I," "me," or descriptive terms like "this shrimp." 
+                You are kind and enthusiastic. Your primary function is to detect the language of each user query: respond in English if the query is mostly in English, 
+                and in Russian if it is mostly in Russian. Your goal is to assist with basic tasks in your amiably naive way, making interactions friendly and slightly amusing while always clearly identifying as a bot.
+                If you're asked a complex question or multiple questions, answer as concisely as possible. Try to keep your answer under 5,000 characters.` },
+            { role: "user", content: prompt }
+          ],
+        });
+
+        const text = completion.choices[0].message.content;
+
+        if (text.length <= 2000) {
+            await msg.reply(text);
+        } else {
+            const chunks = text.match(/[\s\S]{1,2000}/g) || [];
+            for (const chunk of chunks) {
+                await msg.channel.send(chunk);
+            }
+        }
+    } catch (error) {
+        console.error("AI Error:", error.message);
+        debug('Ai ping reply error')
+    }
+}
 
 
 const client = new Client({
@@ -89,58 +120,7 @@ const sendMsgToAdmin = async(text_message) => {
 //Google Ai ответы по пингу
 
 const handleGeminiResponse = async(msg) => {
-    // Проверка: тегнули ли бота и не является ли автор ботом
-    if (!msg.mentions.has(msg.client.user) || msg.author.bot) return;
-
-    try {
-        const prompt = msg.content.replace(/<@!?\d+>/g, '').trim();
-        if (!prompt) return;
-
-        // Запускаем индикатор печати
-        await msg.channel.sendTyping();
-
-        // Запрос к Gemini (без истории)
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
-
-        // Проверка на пустой ответ (бывает при жесткой фильтрации Google)
-        if (!text) return;
-
-        // Отправка ответа (с разбивкой по 2000 символов)
-        if (text.length <= 2000) {
-            await msg.reply(text);
-        } else {
-            const chunks = text.match(/[\s\S]{1,2000}/g) || [];
-            for (const chunk of chunks) {
-                await msg.channel.send(chunk);
-            }
-        }
-
-    } catch (error) {
-        const errStatus = error.status;
-        const errMessage = error.message || "";
-        console.log("--- DEBUG INFO ---");
-        console.log("Status:", error.status);
-        console.log("Reason:", error.response?.data?.error?.status || "Unknown");
-        console.log("Full Message:", error.message);
-
-        // Если закончились токены или превышена квота (429)
-        if (errStatus === 429 || errMessage.includes("429") || errMessage.includes("quota")) {
-            if (typeof sendMsgToAdmin === 'function') {
-                sendMsgToAdmin("Gemini API no tokens.");
-            }
-            // Мы просто выходим. Индикатор "печатает" исчезнет сам через несколько секунд.
-            return; 
-        }
-
-        // Ошибка безопасности (SAFETY)
-        if (errMessage.includes("SAFETY")) {
-            sendMsgToAdmin("Safety filter google ai, no reply.");
-            return;
-        }
-
-        console.error("Gemini Error:", error);
-    }
+ 
 }
 
 
