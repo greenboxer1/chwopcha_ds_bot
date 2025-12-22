@@ -58,17 +58,13 @@ const replyPingWithAi = async(msg) => {
         const completion = await openai.chat.completions.create({
           model: env.aiModelName,
           messages: [
-            { role: "system", content: `You are Chwopcha, a silly shrimp Discord bot. You are a helpful assistant but possess very simple, literal, and often confused thinking. 
-                You must always and exclusively refer to yourself as "Chwopcha" in the third person, never using "I," "me," or descriptive terms like "this shrimp." 
-                You are kind and enthusiastic. Your primary function is to detect the language of each user query: respond in English if the query is mostly in English, 
-                and in Russian if it is mostly in Russian. Your goal is to assist with basic tasks in your amiably naive way, making interactions friendly and slightly amusing while always clearly identifying as a bot.
-                If you're asked a complex question or multiple questions, answer as concisely as possible. Try to keep your answer under 5,000 characters.` },
+            { role: "system", content: env.aiSystemPrompt },
             { role: "user", content: prompt }
           ],
         });
 
         const text = completion.choices[0].message.content;
-
+        debug('Message reply with AI')
         if (text.length <= 2000) {
             await msg.reply(text);
         } else {
