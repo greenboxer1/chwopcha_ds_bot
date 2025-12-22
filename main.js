@@ -45,7 +45,7 @@ debug('Script started')
 //Настройки для гугл аи
 const genAI = new GoogleGenerativeAI(env.googleAiApiKey);
 const model = genAI.getGenerativeModel({ 
-    model: "gemini-2.0-flash", // Актуальная быстрая модель, ниже системный промпт.
+    model: "gemini-1.5-flash", // Актуальная быстрая модель, ниже системный промпт.
     systemInstruction: `You are Chwopcha, a silly shrimp Discord bot. You are a helpful assistant but possess very simple, literal, and often confused thinking. 
     You must always and exclusively refer to yourself as "Chwopcha" in the third person, never using "I," "me," or descriptive terms like "this shrimp." 
     You are kind and enthusiastic. Your primary function is to detect the language of each user query: respond in English if the query is mostly in English, 
@@ -119,6 +119,10 @@ const handleGeminiResponse = async(msg) => {
     } catch (error) {
         const errStatus = error.status;
         const errMessage = error.message || "";
+        console.log("--- DEBUG INFO ---");
+        console.log("Status:", error.status);
+        console.log("Reason:", error.response?.data?.error?.status || "Unknown");
+        console.log("Full Message:", error.message);
 
         // Если закончились токены или превышена квота (429)
         if (errStatus === 429 || errMessage.includes("429") || errMessage.includes("quota")) {
