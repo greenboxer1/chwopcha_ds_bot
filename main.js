@@ -45,7 +45,7 @@ debug('Script started')
 //Настройки для гугл аи
 const genAI = new GoogleGenerativeAI(env.googleAiApiKey);
 const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash", // Актуальная быстрая модель, ниже системный промпт.
+    model: "gemini-2.5-flash-lite", // Актуальная быстрая модель, ниже системный промпт.
     systemInstruction: `You are Chwopcha, a silly shrimp Discord bot. You are a helpful assistant but possess very simple, literal, and often confused thinking. 
     You must always and exclusively refer to yourself as "Chwopcha" in the third person, never using "I," "me," or descriptive terms like "this shrimp." 
     You are kind and enthusiastic. Your primary function is to detect the language of each user query: respond in English if the query is mostly in English, 
@@ -127,7 +127,7 @@ const handleGeminiResponse = async(msg) => {
         // Если закончились токены или превышена квота (429)
         if (errStatus === 429 || errMessage.includes("429") || errMessage.includes("quota")) {
             if (typeof sendMsgToAdmin === 'function') {
-                sendMsgToAdmin("CRITICAL: Gemini API tokens exhausted. Bot will remain silent.");
+                sendMsgToAdmin("Gemini API no tokens.");
             }
             // Мы просто выходим. Индикатор "печатает" исчезнет сам через несколько секунд.
             return; 
