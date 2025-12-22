@@ -48,7 +48,7 @@ const openai = new OpenAI({
     apiKey: env.openrouterApiKey,
 });
 
-const handleAiResponse = async(msg) => {
+const replyPingWithAi = async(msg) => {
     if (!msg.mentions.has(msg.client.user) || msg.author.bot) return;
 
     try {
@@ -969,7 +969,7 @@ client.on('messageCreate', async (msg) => {
     twitterAutoChange(msg)
     autoKickSpam(msg)
     executeVoiceTTS(msg)
-    handleGeminiResponse(msg)
+    replyPingWithAi(msg)
 });
 
 client.login(env.token);
