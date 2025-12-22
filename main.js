@@ -1,4 +1,5 @@
 //Библиотеки
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 import { 
     REST, Routes, ApplicationCommandOptionType, Client, IntentsBitField, 
     managerToFetchingStrategyOptions, Guild, User, EmbedBuilder, time, 
@@ -41,6 +42,16 @@ const debug = (consoleMsg) => {
 
 debug('Script started')
 
+//Настройки для гугл аи
+const genAI = new GoogleGenerativeAI(env.googleAiApiKey);
+const model = genAI.getGenerativeModel({ 
+    model: "gemini-2.0-flash", // Актуальная быстрая модель, ниже системный промпт.
+    systemInstruction: `You are Chwopcha, a silly shrimp Discord bot. You are a helpful assistant but possess very simple, literal, and often confused thinking. 
+    You must always and exclusively refer to yourself as "Chwopcha" in the third person, never using "I," "me," or descriptive terms like "this shrimp." 
+    You are kind and enthusiastic. Your primary function is to detect the language of each user query: respond in English if the query is mostly in English, 
+    and in Russian if it is mostly in Russian. Your goal is to assist with basic tasks in your amiably naive way, making interactions friendly and slightly amusing while always clearly identifying as a bot.`,
+});
+
 
 const client = new Client({
     intents: [
@@ -74,6 +85,59 @@ const sendMsgToAdmin = async(text_message) => {
         console.error('Error when send msg to admin', error);
     }
 }
+
+//Google Ai ответы по пингу
+
+const handleGeminiResponse = async(msg) => {
+    // 1. Проверка: упомянут ли бот и не является ли автор другим ботом
+    if (!msg.mentions.has(msg.client.user) || msg.author.bot) return;
+    try {
+        // Убираем упоминание бота из текста, чтобы ИИ видел только суть вопроса
+        const prompt = msg.content.replace(/<@!?\d+>/g, '').trim();
+        if (!prompt) return;
+
+        // Эффект "печатает..." в дискорде
+        await msg.channel.sendTyping();
+
+        // 2. Запрос без истории (каждый раз с чистого листа)
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        debug('Reply to ping with google ai')
+        // 3. Отправка ответа с проверкой длины (лимит Discord 2000 симв.)
+        if (text.length <= 2000) {
+            await msg.reply(text);
+        } else {
+            // Если ответ огромный, режем его на куски по 2000 символов
+            const chunks = text.match(/[\s\S]{1,2000}/g) || [];
+            for (const chunk of chunks) {
+                await msg.channel.send(chunk);
+            }
+        }
+
+    } catch (error) {
+        // 4. Защита от падения и обработка лимитов
+        const errorMessage = error.message || "";
+
+        // Если закончились бесплатные токены/запросы (429 Too Many Requests)
+        if (error.status === 429 || errorMessage.includes("429") || errorMessage.includes("quota")) {
+            // Твоя внешняя функция уведомления админа
+            if (typeof sendMsgToAdmin === 'function') {
+                sendMsgToAdmin("The free Google AI tokens have run out or the rate limit was hit.");
+            }
+            return; // Просто молчим в канале
+        }
+
+        // Если ошибка связана с фильтрами безопасности (даже если они на NONE)
+        if (errorMessage.includes("SAFETY")) {
+            sendMsgToAdmin("Safety filter google ai, no reply.");
+            return; 
+        }
+
+        // В случае любой другой ошибки просто логируем её, чтобы бот не "лег"
+        console.error("Gemini API Error:", error);
+    }
+}
+
 
 // ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА ГОВОРИЛКА
 
@@ -920,6 +984,7 @@ client.on('messageCreate', async (msg) => {
     twitterAutoChange(msg)
     autoKickSpam(msg)
     executeVoiceTTS(msg)
+    handleGeminiResponse(msg)
 });
 
 client.login(env.token);
