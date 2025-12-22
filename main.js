@@ -49,7 +49,7 @@ const openai = new OpenAI({
 });
 
 const replyPingWithAi = async(msg) => {
-    if (!msg.mentions.has(msg.client.user) || msg.author.bot) return;
+    if (!msg.mentions.users.has(msg.client.user.id) || msg.author.bot) return;
 
     try {
         const prompt = msg.content.replace(/<@!?\d+>/g, '').trim();
