@@ -89,25 +89,27 @@ const sendMsgToAdmin = async(text_message) => {
 //Google Ai ответы по пингу
 
 const handleGeminiResponse = async(msg) => {
-    // 1. Проверка: упомянут ли бот и не является ли автор другим ботом
+    // Проверка: тегнули ли бота и не является ли автор ботом
     if (!msg.mentions.has(msg.client.user) || msg.author.bot) return;
+
     try {
-        // Убираем упоминание бота из текста, чтобы ИИ видел только суть вопроса
         const prompt = msg.content.replace(/<@!?\d+>/g, '').trim();
         if (!prompt) return;
 
-        // Эффект "печатает..." в дискорде
+        // Запускаем индикатор печати
         await msg.channel.sendTyping();
 
-        // 2. Запрос без истории (каждый раз с чистого листа)
+        // Запрос к Gemini (без истории)
         const result = await model.generateContent(prompt);
         const text = result.response.text();
-        debug('Reply to ping with google ai')
-        // 3. Отправка ответа с проверкой длины (лимит Discord 2000 симв.)
+
+        // Проверка на пустой ответ (бывает при жесткой фильтрации Google)
+        if (!text) return;
+
+        // Отправка ответа (с разбивкой по 2000 символов)
         if (text.length <= 2000) {
             await msg.reply(text);
         } else {
-            // Если ответ огромный, режем его на куски по 2000 символов
             const chunks = text.match(/[\s\S]{1,2000}/g) || [];
             for (const chunk of chunks) {
                 await msg.channel.send(chunk);
@@ -115,26 +117,25 @@ const handleGeminiResponse = async(msg) => {
         }
 
     } catch (error) {
-        // 4. Защита от падения и обработка лимитов
-        const errorMessage = error.message || "";
+        const errStatus = error.status;
+        const errMessage = error.message || "";
 
-        // Если закончились бесплатные токены/запросы (429 Too Many Requests)
-        if (error.status === 429 || errorMessage.includes("429") || errorMessage.includes("quota")) {
-            // Твоя внешняя функция уведомления админа
+        // Если закончились токены или превышена квота (429)
+        if (errStatus === 429 || errMessage.includes("429") || errMessage.includes("quota")) {
             if (typeof sendMsgToAdmin === 'function') {
-                sendMsgToAdmin("The free Google AI tokens have run out or the rate limit was hit.");
+                sendMsgToAdmin("CRITICAL: Gemini API tokens exhausted. Bot will remain silent.");
             }
-            return; // Просто молчим в канале
-        }
-
-        // Если ошибка связана с фильтрами безопасности (даже если они на NONE)
-        if (errorMessage.includes("SAFETY")) {
-            sendMsgToAdmin("Safety filter google ai, no reply.");
+            // Мы просто выходим. Индикатор "печатает" исчезнет сам через несколько секунд.
             return; 
         }
 
-        // В случае любой другой ошибки просто логируем её, чтобы бот не "лег"
-        console.error("Gemini API Error:", error);
+        // Ошибка безопасности (SAFETY)
+        if (errMessage.includes("SAFETY")) {
+            sendMsgToAdmin("Safety filter google ai, no reply.");
+            return;
+        }
+
+        console.error("Gemini Error:", error);
     }
 }
 
