@@ -838,7 +838,7 @@ const twitterAutoChange = async (msg) => {
                 // [ИЗМЕНЕНО] Заменяем тег на чистый ник (displayName) без @ и жирного шрифта
                 msg.mentions.members.forEach(member => {
                     const mentionRegex = new RegExp(`<@!?${member.id}>`, 'g');
-                    userText = userText.replace(mentionRegex, member.displayName); // [ИЗМЕНЕНО] Убран @ и **
+                    userText = userText.replace(mentionRegex, ""); // вместо "" то на что заменяется ник пинга в сообщении
                 });
             }
 
