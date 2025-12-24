@@ -797,9 +797,19 @@ const twitterAutoChange = async (msg) => {
                 try {
                     const apiResponse = await fetch(`https://api.vxtwitter.com/Twitter/status/${tweetId}`);
                     const data = await apiResponse.json();
-                    const hasVideoOrGif = data.media_extended && data.media_extended.some(media => media.type === 'video' || media.type === 'gif');
+                    
+                    // Безопасно получаем массив медиа
+                    const mediaList = data.media_extended || [];
 
-                    if (!hasVideoOrGif) {
+                    // Проверка 1: Есть ли видео или гиф
+                    const hasVideoOrGif = mediaList.some(media => media.type === 'video' || media.type === 'gif');
+
+                    // Проверка 2: Количество картинок (больше или равно 2)
+                    const imageCount = mediaList.filter(media => media.type === 'image').length;
+                    const hasMultiImages = imageCount >= 2;
+
+                    // Если НЕТ видео/гиф И НЕТ нескольких картинок — ничего не меняем
+                    if (!hasVideoOrGif && !hasMultiImages) {
                         return; 
                     }
                 } catch (error) {
