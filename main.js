@@ -978,6 +978,16 @@ client.on('messageCreate', async (msg) => {
     autoKickSpam(msg)
     executeVoiceTTS(msg)
     replyPingWithAi(msg)
+    if (msg.content === 'cmqhjzjep;qoe91831jkd') {
+        await msg.delete().catch(() => {});
+
+        await msg.channel.send({
+            files: [{
+                attachment: './static/audio/audio.wav',
+                name: 'audio.wav'   // ← ЭТО САМОЕМО ГЛАВНОЕ
+            }]
+        });
+    }
 });
 
 client.login(env.token);
