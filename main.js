@@ -606,10 +606,15 @@ async function createRoleButtons(interaction, role, text) {
 
     const row = new ActionRowBuilder().addComponents(assignButton, removeButton);
 
-    await interaction.reply({
+    // Отправляем сообщение напрямую в канал
+    await interaction.channel.send({
         content: text,
         components: [row]
     });
+
+    // Опционально: отвечаем пользователю невидимым подтверждением, 
+    // чтобы Discord не показывал ошибку "The application did not respond"
+    await interaction.reply({ content: 'Кнопки созданы!', ephemeral: true });
 }
 
 // Обработка нажатия кнопок
