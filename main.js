@@ -385,7 +385,20 @@ const registerCommands = async (client) => {
         {
             name: 'embed',
             description: 'Create a custom embed message'
+        },
+        {
+            name: 'change_nick',
+            description: 'Change the bot nickname on this server',
+            options: [
+                {
+                    name: 'new_nick',
+                    description: 'The new nickname for the bot',
+                    type: 3, // String type
+                    required: true
+                }
+            ]
         }
+        
     ];
 
     const rest = new REST({ version: '10', timeout: 30000 }).setToken(env.token);
@@ -464,6 +477,34 @@ async function handleSlashCommand(interaction) {
         }
 
         await showEmbedModal(interaction);
+    }   else if (commandName === 'change_nick') {
+        // Проверка прав администратора
+        if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+            return await interaction.reply({
+                content: 'You do not have permission to use this command! Administrator rights required.',
+                ephemeral: true
+            });
+        }
+
+        const newNick = interaction.options.getString('new_nick');
+        const botMember = interaction.guild.members.me; // Получаем объект самого бота на сервере
+
+        try {
+            // Меняем ник
+            await botMember.setNickname(newNick);
+            
+            await interaction.reply({
+                content: `✅ My nickname has been changed to **${newNick}**`,
+                ephemeral: true
+            });
+            debug(`Bot nickname changed to ${newNick} in guild ${interaction.guild.id}`);
+        } catch (error) {
+            console.error('Error changing nickname:', error);
+            await interaction.reply({
+                content: `❌ Failed to change nickname. Make sure my role is higher than other bots/users and I have "Change Nickname" permission.`,
+                ephemeral: true
+            });
+        }
     }
 }
 
