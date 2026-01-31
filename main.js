@@ -409,6 +409,24 @@ const registerCommands = async (client) => {
                     required: true
                 }
             ]
+        },
+        {
+            name: 'dell_all_last_usr_msgs',
+            description: 'Deletes all consecutive messages from the last user who sent a message',
+        },
+        {
+            name: 'dell_last_msgs',
+            description: 'Deletes a specified number of last messages',
+            options: [
+                {
+                    name: 'count',
+                    description: 'Number of messages to delete (max 100)',
+                    type: 4, // Integer
+                    required: true,
+                    min_value: 1,
+                    max_value: 100
+                }
+            ]
         }
         
     ];
@@ -538,6 +556,81 @@ async function handleSlashCommand(interaction) {
         } catch (error) {
             console.error('Error sending message via /msg:', error);
             await interaction.reply({ content: 'Failed to send message.', ephemeral: true });
+        }
+    } else if (commandName === 'dell_all_last_usr_msgs') {
+        // Проверка прав администратора
+        if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+            return await interaction.reply({
+                content: 'Administrator rights required.',
+                ephemeral: true
+            });
+        }
+
+        try {
+            // Получаем последние 50 сообщений (обычно спам укладывается в этот лимит)
+            const messages = await interaction.channel.messages.fetch({ limit: 50 });
+            
+            if (messages.size === 0) {
+                return await interaction.reply({ content: 'No messages to delete.', ephemeral: true });
+            }
+
+            const lastMessage = messages.first();
+            const targetUserId = lastMessage.author.id;
+            
+            // Фильтруем сообщения: берем только подряд идущие от этого же автора
+            // Как только встречаем чужое сообщение — останавливаемся
+            let msgsToDelete = [];
+            for (const [id, msg] of messages) {
+                if (msg.author.id === targetUserId) {
+                    msgsToDelete.push(msg);
+                } else {
+                    break; 
+                }
+            }
+
+            // Удаляем найденное
+            if (msgsToDelete.length > 0) {
+                await interaction.channel.bulkDelete(msgsToDelete, true);
+                
+                await interaction.reply({ 
+                    content: `Deleted ${msgsToDelete.length} messages from <@${targetUserId}>.`, 
+                    ephemeral: true 
+                });
+                debug(`Deleted ${msgsToDelete.length} messages from user ${targetUserId} in ${interaction.guild.name}`);
+            } else {
+                await interaction.reply({ content: 'Nothing to delete.', ephemeral: true });
+            }
+
+        } catch (error) {
+            console.error('Error in dell_all_last_usr_msgs:', error);
+            await interaction.reply({ content: 'Failed to delete messages (they might be older than 14 days).', ephemeral: true });
+        }
+
+    } else if (commandName === 'dell_last_msgs') {
+        // Проверка прав администратора
+        if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+            return await interaction.reply({
+                content: 'Administrator rights required.',
+                ephemeral: true
+            });
+        }
+
+        const count = interaction.options.getInteger('count');
+
+        try {
+            // Удаляем указанное количество
+            // Параметр true позволяет игнорировать ошибки, если сообщения старше 14 дней (они просто не удалятся)
+            const deleted = await interaction.channel.bulkDelete(count, true);
+
+            await interaction.reply({ 
+                content: `Successfully deleted ${deleted.size} messages.`, 
+                ephemeral: true 
+            });
+            debug(`Bulk deleted ${deleted.size} messages in ${interaction.guild.name}`);
+
+        } catch (error) {
+            console.error('Error in dell_last_msgs:', error);
+            await interaction.reply({ content: 'Failed to delete messages.', ephemeral: true });
         }
     }
 }
