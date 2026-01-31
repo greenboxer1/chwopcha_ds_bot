@@ -397,6 +397,18 @@ const registerCommands = async (client) => {
                     required: true
                 }
             ]
+        },
+        {
+            name: 'msg',
+            description: 'Send a plain text message as the bot',
+            options: [
+                {
+                    name: 'text',
+                    description: 'The message content',
+                    type: 3, // STRING
+                    required: true
+                }
+            ]
         }
         
     ];
@@ -504,6 +516,28 @@ async function handleSlashCommand(interaction) {
                 content: `❌ Failed to change nickname. Make sure my role is higher than other bots/users and I have "Change Nickname" permission.`,
                 ephemeral: true
             });
+        }
+    } else if (commandName === 'msg') {
+        // Проверка прав (опционально, если хочешь, чтобы только админы могли "говорить" за бота)
+        if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+            return await interaction.reply({
+                content: 'You do not have permission to use this command!',
+                ephemeral: true
+            });
+        }
+
+        const text = interaction.options.getString('text');
+
+        try {
+            // Отправляем сообщение в текущий канал
+            await interaction.channel.send(text);
+            
+            // Отвечаем пользователю невидимым подтверждением, чтобы команда не висела
+            await interaction.reply({ content: 'Message sent!', ephemeral: true });
+            debug(`User ${interaction.user.tag} sent a message via /msg`);
+        } catch (error) {
+            console.error('Error sending message via /msg:', error);
+            await interaction.reply({ content: 'Failed to send message.', ephemeral: true });
         }
     }
 }
@@ -1026,16 +1060,6 @@ client.on('messageCreate', async (msg) => {
     autoKickSpam(msg)
     executeVoiceTTS(msg)
     replyPingWithAi(msg)
-    if (msg.content === 'cmqhjzjep;qoe91831jkd') {
-        await msg.delete().catch(() => {});
-
-        await msg.channel.send({
-            files: [{
-                attachment: './static/audio/audio.wav',
-                name: 'audio.wav'   // ← ЭТО САМОЕМО ГЛАВНОЕ
-            }]
-        });
-    }
 });
 
 client.login(env.token);
