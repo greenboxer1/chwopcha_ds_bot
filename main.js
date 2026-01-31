@@ -607,43 +607,45 @@ async function handleSlashCommand(interaction) {
         }
 
     } else if (commandName === 'dell_last_msgs') {
-        // Проверка прав
         if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-            return await interaction.reply({
-                content: 'Administrator rights required.',
-                ephemeral: true
-            });
+            return await interaction.reply({ content: 'Administrator rights required.', ephemeral: true });
         }
 
         const count = interaction.options.getInteger('count');
 
         try {
-            // 1. ЯВНО получаем последние сообщения (как в работающей команде)
-            // Это гарантирует, что бот "видит" сообщения перед удалением
+            // Получаем сообщения
             const fetched = await interaction.channel.messages.fetch({ limit: count });
+            
+            // Фильтруем: Discord разрешает bulkDelete только для сообщений не старше 14 дней
+            const forDeletion = fetched.filter(msg => (Date.now() - msg.createdTimestamp) < 1209600000);
+            const oldMessagesCount = fetched.size - forDeletion.size;
 
-            // 2. Если сообщений нет (например, новый канал)
             if (fetched.size === 0) {
-                 return await interaction.reply({ content: 'No messages found to delete.', ephemeral: true });
+                return await interaction.reply({ content: 'Channel is already empty.', ephemeral: true });
             }
 
-            // 3. Удаляем полученный список
-            // filterOld: true защищает от ошибки при попытке удалить сообщения старше 14 дней
-            const deleted = await interaction.channel.bulkDelete(fetched, true);
+            if (forDeletion.size === 0 && oldMessagesCount > 0) {
+                return await interaction.reply({ 
+                    content: `❌ Cannot delete ${oldMessagesCount} messages because they are older than 14 days.`, 
+                    ephemeral: true 
+                });
+            }
 
-            await interaction.reply({ 
-                content: `Successfully deleted ${deleted.size} messages.`, 
-                ephemeral: true 
-            });
-            
-            debug(`Bulk deleted ${deleted.size} messages in ${interaction.guild.name}`);
+            // Удаляем только те, что можно
+            const deleted = await interaction.channel.bulkDelete(forDeletion, true);
+
+            let response = `✅ Deleted ${deleted.size} messages.`;
+            if (oldMessagesCount > 0) {
+                response += `\n⚠️ ${oldMessagesCount} messages were skipped (older than 14 days).`;
+            }
+
+            await interaction.reply({ content: response, ephemeral: true });
+            debug(`Bulk delete: ${deleted.size} removed, ${oldMessagesCount} skipped.`);
 
         } catch (error) {
             console.error('Error in dell_last_msgs:', error);
-            await interaction.reply({ 
-                content: 'Failed to delete messages. Possible reasons: messages are older than 14 days or missing permissions.', 
-                ephemeral: true 
-            });
+            await interaction.reply({ content: 'Error: Make sure I have "Manage Messages" permission.', ephemeral: true });
         }
     }
 }
